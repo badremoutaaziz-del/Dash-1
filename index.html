@@ -351,6 +351,16 @@ body.cp-agent-readonly .vtog{
   pointer-events:auto!important;
 }
 
+/* AGENT PLANNING WEEK SELECT ALLOWED */
+body.cp-agent-readonly #planning-week-select,
+body.cp-agent-readonly .planning-week-select{
+  pointer-events:auto!important;
+  opacity:1!important;
+  cursor:pointer!important;
+  background:transparent!important;
+  color:var(--ink)!important;
+}
+
 </style>
 </head>
 <body>
@@ -701,7 +711,7 @@ let CONFIG = {
     {id:"aht",label:"AHT (min)",unit:" min",target:7,dir:"lte",vol:false},
     {id:"chats",label:"Chats",unit:"",target:null,dir:"gte",vol:true},
     {id:"jira",label:"Jira Tickets",unit:"",target:null,dir:"gte",vol:true},
-    {id:"productivity",label:"Productivity",unit:"",target:7,dir:"gte",vol:false},
+    {id:"productivity",label:"Productivity",unit:"",target:null,dir:"gte",vol:false},
     {id:"totalHrs",label:"Total Hours Worked",unit:" h",target:null,dir:"gte",vol:false},
     {id:"qualEmail",label:"Qualité Email (%)",unit:"%",target:90,dir:"gte",vol:false},
     {id:"qualPhone",label:"Qualité Téléphone (%)",unit:"%",target:90,dir:"gte",vol:false},
@@ -711,6 +721,17 @@ let CONFIG = {
 function saveConfig(){try{localStorage.setItem('cp_config',JSON.stringify(CONFIG));}catch(e){}}
 function loadConfig(){try{const s=localStorage.getItem('cp_config');if(s)CONFIG=JSON.parse(s);}catch(e){}}
 loadConfig();
+
+// GitHub shared config fix: productivity target is disabled globally until a real target exists.
+function normalizeSharedConfig(){
+  try{
+    if(CONFIG && Array.isArray(CONFIG.kpis)){
+      const prod=CONFIG.kpis.find(k=>k.id==='productivity');
+      if(prod) prod.target=null;
+    }
+  }catch(e){}
+}
+normalizeSharedConfig();
 
 // ══════════════════════════════════════════════════════════
 // ── STATE ─────────────────────────────────────────────────
@@ -781,6 +802,7 @@ function getWeek(){const el=document.getElementById('wsel');return parseInt(el&&
 function monthOf(wNum){const w=CONFIG.weeks.find(x=>x.num===wNum);return w?w.month:'—';}
 function allMonths(){return[...new Set(CONFIG.weeks.map(w=>w.month))];}
 loadDashboardState();
+normalizeSharedConfig();
 
 function saveInputs(ai,w){
   const k=key(ai,w),d=store[k]||{};
@@ -1059,7 +1081,7 @@ function renderSidebar(){
 // ── PAGE ROUTER ───────────────────────────────────────────
 // ══════════════════════════════════════════════════════════
 function goTeam(){if(currentUser&&!authIsManager()){authGuardPage();renderSidebar();renderContent();return;}curPage='team';selA=null;renderSidebar();renderTeam();}
-function goPlanning(){curPage='planning';selA=(currentUser&&!authIsManager())?authAllowedAgentIndex():null;renderSidebar();renderPlanning();}
+function goPlanning(){curPage='planning';selA=(currentUser&&!authIsManager())?authAllowedAgentIndex():null;renderSidebar();renderPlanning();if(typeof cpCleanAgentUI==='function')setTimeout(cpCleanAgentUI,0);}
 function goPip(){if(currentUser&&!authIsManager()){authGuardPage();renderSidebar();renderContent();return;}curPage='pip';selA=null;renderSidebar();renderPIPs();}
 function goAdmin(){if(currentUser&&!authIsManager()){authGuardPage();renderSidebar();renderContent();return;}curPage='admin';selA=null;renderSidebar();renderAdmin();}
 function goGuide(){if(currentUser&&!authIsManager()){authGuardPage();renderSidebar();renderContent();return;}curPage='guide';selA=null;renderSidebar();renderGuide();}
@@ -1599,7 +1621,7 @@ function renderMonthly(){
   ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:9.5},boxWidth:11}}},
     scales:{x:{grid:{color:'#EEEBE4'},ticks:{font:{size:9.5},color:'#928E82'}},y:{grid:{color:'#EEEBE4'},suggestedMin:60,suggestedMax:100,ticks:{callback:v=>v+'%',font:{size:9.5},color:'#928E82'}}}}}));
 }
-function setMth(m){activeMth=m;destroyCharts();renderMonthly();}
+function setMth(m){activeMth=m;destroyCharts();renderMonthly();if(typeof cpCleanAgentUI==='function')setTimeout(cpCleanAgentUI,0);}
 
 // ══════════════════════════════════════════════════════════
 // ── TEAM VIEW ─────────────────────────────────────────────
@@ -2083,7 +2105,7 @@ function renderPlanning(){
       <div style="display:flex;align-items:center;gap:8px">
         <div style="display:flex;align-items:center;gap:6px;background:var(--s2);border:1px solid var(--bd);border-radius:7px;padding:4px 9px;font-size:11.5px">
           <span style="font-size:13px">📆</span>
-          <select onchange="planningWeek=this.value;renderPlanning()" style="border:none;background:none;font-family:'Sora',sans-serif;font-size:11.5px;color:var(--ink);cursor:pointer;outline:none">${weekOptions}</select>
+          <select id="planning-week-select" class="planning-week-select" onchange="planningWeek=this.value;renderPlanning()" style="border:none;background:none;font-family:'Sora',sans-serif;font-size:11.5px;color:var(--ink);cursor:pointer;outline:none">${weekOptions}</select>
         </div>
       </div>
     </div>
@@ -2773,7 +2795,7 @@ buildWeekSelect(currentWeek);
 
     // Hide manual edit tabs/cards/buttons including 1:1 delete controls.
     const blocked=["Saisie & Graphiques","Saisie KPIs","Email 1:1","Plans d\'Action","Save Data","Tout supprimer","✕ 1:1","Modifier","Supprimer","Générer"];
-    document.querySelectorAll('button,.tab,.card,.ec,.coach-box,.ap-new').forEach(el=>{
+    document.querySelectorAll('button,.tab,.coach-box,.ap-new').forEach(el=>{
       if(el.id==='bw'||el.id==='bm'||el.id==='cp-signout-btn'||el.closest('.vtog')||el.closest('.wpill')) return;
       const txt=(el.textContent||'').trim();
       if(blocked.some(b=>txt.includes(b))){
