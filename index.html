@@ -717,7 +717,12 @@ loadConfig();
 // ══════════════════════════════════════════════════════════
 let store={},apStore={},coachStore={},pipStore={};
 let selA=null,curPage='agent',view='weekly',activeMth='Mars',activeTab='kpis';
-let charts=[],lastEmail='',scriptUrl='',connected=false,pendingAPText='',autoRefreshTimer=null,lastSheetUpdate='',currentWeek=null;
+const DEFAULT_SCRIPT_URL='https://script.google.com/macros/s/AKfycbz8bbvvJORR5ek3OWJNlgTlveKgQCA1oinG0iUqdaf95wjOl_cnYbGXYME2op2fikjn/exec';
+function hasDefaultScriptUrl(){
+  return /^https:\/\/script\.google\.com\/macros\/s\/[^\s'"]+\/exec(?:\?.*)?$/.test((DEFAULT_SCRIPT_URL||'').trim());
+}
+
+let charts=[],lastEmail='',scriptUrl=hasDefaultScriptUrl()?DEFAULT_SCRIPT_URL:'',connected=!!scriptUrl,pendingAPText='',autoRefreshTimer=null,lastSheetUpdate='',currentWeek=null;
 
 const CACHE_KEY='cp_dashboard_state_v2';
 function saveDashboardState(){
@@ -731,14 +736,31 @@ function saveDashboardState(){
 }
 function loadDashboardState(){
   try{
-    const raw=localStorage.getItem(CACHE_KEY);if(!raw)return;
+    const hasDefault=hasDefaultScriptUrl();
+    const raw=localStorage.getItem(CACHE_KEY);
+    if(!raw){
+      scriptUrl=hasDefault?DEFAULT_SCRIPT_URL:'';
+      connected=!!scriptUrl;
+      return;
+    }
+
     const st=JSON.parse(raw);
     if(st.CONFIG)CONFIG=st.CONFIG;
     store=st.store||{};apStore=st.apStore||{};coachStore=st.coachStore||{};pipStore=st.pipStore||{};
     selA=Number.isInteger(st.selA)?st.selA:null;curPage=st.curPage||'agent';view=st.view||'weekly';
     activeMth=st.activeMth||'Mars';activeTab=st.activeTab||'kpis';lastSheetUpdate=st.lastSheetUpdate||'';
-    scriptUrl=st.scriptUrl||scriptUrl||'';connected=!!st.connected;currentWeek=st.currentWeek||currentWeek;
-  }catch(e){console.warn('Cache not loaded',e);}
+
+    // Always prioritize the hardcoded /exec URL for GitHub users.
+    // This prevents agents from seeing an empty dashboard because localStorage is browser-specific.
+    scriptUrl=hasDefault?DEFAULT_SCRIPT_URL:(st.scriptUrl||scriptUrl||'');
+    connected=!!scriptUrl;
+    currentWeek=st.currentWeek||currentWeek;
+  }catch(e){
+    console.warn('Cache not loaded',e);
+    const hasDefault=hasDefaultScriptUrl();
+    scriptUrl=hasDefault?DEFAULT_SCRIPT_URL:'';
+    connected=!!scriptUrl;
+  }
 }
 function saveManualData(){
   if(selA!==null)saveInputs(selA,getWeek());
@@ -2284,11 +2306,38 @@ buildWeekSelect(currentWeek);
 /* auth handled by verified login */
 /* auth handled by verified login */
 /* auth handled by verified login */
-if(scriptUrl){document.getElementById('sc-url').value=scriptUrl;document.getElementById('disp-url').value=scriptUrl.length>50?scriptUrl.slice(0,50)+'…':scriptUrl;setSS('ok','✓ Cache chargé');}
-renderSidebar();
-if(currentUser){renderContent();}
-else if(selA!==null&&curPage==='agent')renderContent();else if(curPage==='team')renderTeam();else if(curPage==='pip')renderPIPs();
-try{const saved=localStorage.getItem('cp_script_url');if(saved&&!scriptUrl){document.getElementById('sc-url').value=saved;}}catch(e){}
+(function(){
+  const hasDefault=hasDefaultScriptUrl();
+  if(hasDefault){
+    scriptUrl=DEFAULT_SCRIPT_URL;
+    connected=true;
+  }
+
+  if(scriptUrl){
+    const sc=document.getElementById('sc-url');
+    const disp=document.getElementById('disp-url');
+    if(sc)sc.value=scriptUrl;
+    if(disp)disp.value=scriptUrl.length>50?scriptUrl.slice(0,50)+'…':scriptUrl;
+    setSS('ok',hasDefault?'✓ Connecté automatiquement':'✓ Cache chargé');
+  }
+
+  renderSidebar();
+  if(currentUser){renderContent();}
+  else if(selA!==null&&curPage==='agent')renderContent();else if(curPage==='team')renderTeam();else if(curPage==='pip')renderPIPs();
+
+  if(hasDefault){
+    try{localStorage.setItem('cp_script_url',DEFAULT_SCRIPT_URL);}catch(e){}
+    setTimeout(function(){
+      try{
+        connected=true;
+        reloadData(true);
+        startAutoRefresh();
+      }catch(e){console.warn('Auto-connect failed',e);}
+    },600);
+  }else{
+    try{const saved=localStorage.getItem('cp_script_url');if(saved&&!scriptUrl){const sc=document.getElementById('sc-url');if(sc)sc.value=saved;}}catch(e){}
+  }
+})();
 </script>
 
 
